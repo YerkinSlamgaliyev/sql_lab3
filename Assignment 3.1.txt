@@ -1,0 +1,105 @@
+CREATE TABLE departments (
+    department_id SERIAL PRIMARY KEY,
+    budget NUMERIC
+);
+
+CREATE TABLE employees (
+    employee_id SERIAL PRIMARY KEY,
+    department_id INTEGER REFERENCES departments(department_id),
+    hourly_rate NUMERIC
+);
+
+CREATE TABLE projects (
+    project_id SERIAL PRIMARY KEY,
+    department_id INTEGER REFERENCES departments(department_id),
+    total_hours_allocated INTEGER
+);
+
+CREATE TABLE employee_projects (
+    employee_project_id SERIAL PRIMARY KEY,
+    employee_id INTEGER REFERENCES employees(employee_id),
+    project_id INTEGER REFERENCES projects(project_id),
+    hours_worked INTEGER
+);
+
+INSERT INTO departments (budget) VALUES
+(5000.00),
+(10000.00),
+(7500.00);
+
+INSERT INTO employees (department_id, hourly_rate) VALUES
+(1, 25.00),
+(2, 30.00),
+(3, 35.00);
+
+INSERT INTO projects (department_id, total_hours_allocated) VALUES
+(1, 200),
+(2, 300),
+(3, 150);
+
+INSERT INTO employee_projects (employee_id, project_id, hours_worked) VALUES
+(1, 1, 40),
+(1, 2, 50),
+(2, 2, 100),
+(2, 3, 60),
+(3, 1, 80),
+(3, 3, 70);
+
+-- Query 1: Cross-Department Budget Check
+SELECT
+    p.project_id,
+    d.department_id,
+    SUM(e.hourly_rate * ep.hours_worked) AS total_cost,
+    d.budget
+FROM
+    projects p
+JOIN
+    departments d ON p.department_id = d.department_id
+JOIN
+    employee_projects ep ON p.project_id = ep.project_id
+JOIN
+    employees e ON ep.employee_id = e.employee_id
+GROUP BY
+    p.project_id, d.department_id, d.budget
+HAVING
+    SUM(e.hourly_rate * ep.hours_worked) > d.budget;
+
+-- Query 2: Employee Overload Check
+WITH RECURSIVE weekly_hours AS (
+    SELECT
+        ep.employee_id,
+        EXTRACT(WEEK FROM CURRENT_DATE - INTERVAL '30 days')::INTEGER AS week_number,
+        SUM(ep.hours_worked) OVER (PARTITION BY ep.employee_id ORDER BY ep.employee_project_id) AS weekly_total
+    FROM
+        employee_projects ep
+    WHERE
+        ep.hours_worked > 0
+)
+SELECT
+    employee_id,
+    AVG(weekly_total) AS avg_weekly_hours
+FROM
+    weekly_hours
+GROUP BY
+    employee_id
+HAVING
+    AVG(weekly_total) > 40;
+
+-- Query 3: Quarterly Department Cost Analysis
+SELECT
+    d.department_id,
+    DATE_TRUNC('quarter', CURRENT_DATE) AS quarter,
+    SUM(e.hourly_rate * ep.hours_worked) AS total_cost,
+    d.budget
+FROM
+    departments d
+JOIN
+    projects p ON d.department_id = p.department_id
+JOIN
+    employee_projects ep ON p.project_id = ep.project_id
+JOIN
+    employees e ON ep.employee_id = e.employee_id
+GROUP BY
+    d.department_id, d.budget
+HAVING
+    SUM(e.hourly_rate * ep.hours_worked) > d.budget;
